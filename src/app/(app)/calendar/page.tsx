@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import FullCalendar, {
-  DateSelectArg,
-  EventClickArg,
-  EventDropArg,
-} from "@fullcalendar/react";
+import FullCalendar from "@fullcalendar/react";
+import { DateSelectArg, EventClickArg, EventDropArg } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import timeGridPlugin from "@fullcalendar/timegrid";
