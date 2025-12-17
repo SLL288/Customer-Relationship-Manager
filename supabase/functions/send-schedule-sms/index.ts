@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 
 const cors = {
-  "Access-Control-Allow-Origin": "http://localhost:3000", // change to your prod origin when deployed
+  "Access-Control-Allow-Origin": "https://customer-relationship-manager.pages.dev",
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
