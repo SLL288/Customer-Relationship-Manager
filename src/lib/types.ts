@@ -34,6 +34,7 @@ export type Event = {
   id: UUID;
   organization_id: UUID | null;
   project_id: UUID | null;
+  team_id: UUID | null;
   start_time: string;
   end_time: string;
   timezone: string | null;
@@ -60,6 +61,23 @@ export type OrgMember = {
   user_id: UUID;
   role: string | null;
   display_name: string | null;
+};
+
+export type Team = {
+  id: UUID;
+  organization_id: UUID | null;
+  name: string;
+  description: string | null;
+  color: string | null;
+  created_at: string | null;
+};
+
+export type TeamMember = {
+  id: UUID;
+  team_id: UUID;
+  user_id: UUID;
+  role: string | null;
+  created_at: string | null;
 };
 
 export type SmsMessage = {

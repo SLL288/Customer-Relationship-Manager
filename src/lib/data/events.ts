@@ -3,12 +3,20 @@ import { Event, EventWithProject } from "../types";
 
 const supabase = getSupabaseClient();
 
-export async function fetchEventsInRange(startIso: string, endIso: string) {
-  const { data, error } = await supabase
+export async function fetchEventsInRange(
+  startIso: string,
+  endIso: string,
+  teamId?: string,
+) {
+  let query = supabase
     .from("events")
     .select("*, project:projects(*)")
     .gte("start_time", startIso)
     .lte("end_time", endIso);
+  if (teamId) {
+    query = query.eq("team_id", teamId);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return (data || []) as EventWithProject[];
 }
