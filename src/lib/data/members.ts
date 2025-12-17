@@ -1,0 +1,23 @@
+import { getSupabaseClient } from "../supabase/client";
+import { OrgMember } from "../types";
+
+const supabase = getSupabaseClient();
+
+export async function fetchMembers() {
+  const { data, error } = await supabase
+    .from("org_members")
+    .select("*")
+    .order("display_name", { ascending: true });
+  if (error) throw error;
+  return (data || []) as OrgMember[];
+}
+
+export async function fetchCrewMembers() {
+  const { data, error } = await supabase
+    .from("org_members")
+    .select("*")
+    .eq("role", "crew_member")
+    .order("display_name", { ascending: true });
+  if (error) throw error;
+  return (data || []) as OrgMember[];
+}
