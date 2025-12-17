@@ -18,7 +18,8 @@ import {
 import { fetchProjects } from "../../../lib/data/projects";
 import { fetchCrewMembers } from "../../../lib/data/members";
 import { fetchAssignmentsForEvent, replaceAssignments } from "../../../lib/data/assignments";
-import { Event as DbEvent, EventWithProject, OrgMember, Project } from "../../../lib/types";
+import { fetchTeams } from "../../../lib/data/teams";
+import { Event as DbEvent, EventWithProject, OrgMember, Project, Team } from "../../../lib/types";
 import { Trash2, CheckCircle2 } from "lucide-react";
 
 type EventForm = Partial<DbEvent> & { id?: string };
@@ -27,6 +28,8 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<EventWithProject[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [crew, setCrew] = useState<OrgMember[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<EventForm>({});
@@ -54,23 +57,36 @@ export default function CalendarPage() {
   useEffect(() => {
     const loadLookups = async () => {
       try {
-        const [projectData, crewData] = await Promise.all([
+        const [projectData, crewData, teamData] = await Promise.all([
           fetchProjects("all"),
           fetchCrewMembers(),
+          fetchTeams(),
         ]);
         setProjects(projectData);
         setCrew(crewData);
+        setTeams(teamData);
+        if (teamData.length && !currentTeamId) {
+          setCurrentTeamId(teamData[0].id);
+        }
       } catch (err: any) {
         toast.error(err.message || "Failed to load reference data");
       }
     };
     loadLookups();
-  }, []);
+  }, [currentTeamId]);
 
-  const loadEvents = async (startIso: string, endIso: string) => {
+  const loadEvents = async (
+    startIso: string,
+    endIso: string,
+    teamOverride?: string | null,
+  ) => {
     setLoading(true);
     try {
-      const data = await fetchEventsInRange(startIso, endIso);
+      const data = await fetchEventsInRange(
+        startIso,
+        endIso,
+        (teamOverride ?? currentTeamId) || undefined,
+      );
       setEvents(data);
     } catch (err: any) {
       toast.error(err.message || "Failed to load events");
@@ -88,6 +104,7 @@ export default function CalendarPage() {
       status: "scheduled",
       notes: "",
       project_id: projects[0]?.id || null,
+      team_id: currentTeamId,
     });
     setSelectedAssignmentIds([]);
     setModalOpen(true);
@@ -129,8 +146,8 @@ export default function CalendarPage() {
   };
 
   const handleSave = async () => {
-    if (!form.project_id || !form.start_time || !form.end_time) {
-      toast.error("Project, start, and end are required");
+    if (!form.project_id || !form.start_time || !form.end_time || !form.team_id) {
+      toast.error("Team, project, start, and end are required");
       return;
     }
     const startIso = new Date(form.start_time).toISOString();
@@ -141,12 +158,14 @@ export default function CalendarPage() {
       if (form.id) {
         saved = await updateEvent(form.id, {
           ...form,
+          team_id: form.team_id,
           start_time: startIso,
           end_time: endIso,
         });
       } else {
         saved = await insertEvent({
           ...form,
+          team_id: form.team_id,
           start_time: startIso,
           end_time: endIso,
         });
@@ -206,6 +225,29 @@ export default function CalendarPage() {
           <span className="text-xs font-medium text-slate-500">Loading...</span>
         )}
       </div>
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
+          <span className="font-semibold">Team</span>
+          <select
+            value={currentTeamId || ""}
+            onChange={(e) => {
+              const val = e.target.value || null;
+              setCurrentTeamId(val);
+              if (rangeStart && rangeEnd) {
+                loadEvents(rangeStart, rangeEnd);
+              }
+            }}
+            className="rounded-md border border-slate-200 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none"
+          >
+            {teams.length === 0 && <option value="">No teams</option>}
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -240,6 +282,25 @@ export default function CalendarPage() {
       >
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">
+                Team
+              </label>
+              <select
+                value={form.team_id || ""}
+                onChange={(e) =>
+                  setForm({ ...form, team_id: e.target.value || null })
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="">Select team</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700">
                 Project
@@ -397,3 +458,9 @@ export default function CalendarPage() {
     </div>
   );
 }
+              const val = e.target.value || null;
+              setCurrentTeamId(val);
+              if (rangeStart && rangeEnd) {
+                loadEvents(rangeStart, rangeEnd, val);
+              }
+            }}
