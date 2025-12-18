@@ -6,6 +6,7 @@ import { DateSelectArg, EventClickArg, EventDropArg } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import timeGridPlugin from "@fullcalendar/timegrid";
+import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
 import toast from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
 import {
@@ -57,6 +58,7 @@ export default function CalendarPage() {
           title: evt.project?.title || "Untitled",
           start: evt.start_time,
           end: evt.end_time,
+          resourceId: evt.team_id || undefined,
           backgroundColor: teamColor || (confirmed ? "#22c55e" : undefined),
           borderColor: teamColor || (confirmed ? "#16a34a" : undefined),
           extendedProps: evt,
@@ -64,6 +66,17 @@ export default function CalendarPage() {
       }),
     [events, teamById],
   );
+
+  const calendarResources = useMemo(() => {
+    const list = currentTeamId
+      ? teams.filter((team) => team.id === currentTeamId)
+      : teams;
+    return list.map((team) => ({
+      id: team.id,
+      title: team.name,
+      eventColor: team.color || undefined,
+    }));
+  }, [teams, currentTeamId]);
 
   useEffect(() => {
     const loadLookups = async () => {
@@ -132,6 +145,7 @@ export default function CalendarPage() {
 
   const handleSelect = (selectInfo: DateSelectArg) => {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const resourceId = (selectInfo as any).resource?.id as string | undefined;
     setForm({
       start_time: selectInfo.startStr,
       end_time: selectInfo.endStr,
@@ -139,7 +153,7 @@ export default function CalendarPage() {
       status: "scheduled",
       notes: "",
       project_id: projects[0]?.id || null,
-      team_id: currentTeamId,
+      team_id: resourceId || currentTeamId,
     });
     setSelectedAssignmentIds([]);
     setModalOpen(true);
@@ -159,10 +173,12 @@ export default function CalendarPage() {
   };
 
   const handleEventDrop = async (arg: EventDropArg) => {
+    const newResourceId = (arg as any).newResource?.id as string | undefined;
     try {
       await updateEvent(arg.event.id, {
         start_time: arg.event.start?.toISOString(),
         end_time: arg.event.end?.toISOString(),
+        team_id: newResourceId || arg.event.extendedProps?.team_id || undefined,
       });
       toast.success("Event rescheduled");
       if (rangeStart && rangeEnd) {
@@ -284,16 +300,41 @@ export default function CalendarPage() {
             ))}
           </select>
         </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <span className="font-semibold uppercase tracking-wide text-slate-500">
+            Legend
+          </span>
+          {teams.length === 0 && <span>No teams yet</span>}
+          {teams.map((team) => (
+            <span
+              key={team.id}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1"
+            >
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: team.color || "#94a3b8" }}
+              />
+              {team.name}
+            </span>
+          ))}
+        </div>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
+          plugins={[
+            dayGridPlugin,
+            timeGridPlugin,
+            interactionPlugin,
+            resourceTimeGridPlugin,
+          ]}
+          initialView="resourceTimeGridWeek"
           headerToolbar={{
             left: "prev,next today",
             center: "title",
-            right: "dayGridMonth,timeGridWeek,timeGridDay",
+            right: "dayGridMonth,resourceTimeGridWeek,resourceTimeGridDay",
           }}
+          resources={calendarResources}
+          resourceAreaHeaderContent="Teams"
           selectable
           selectMirror
           editable
