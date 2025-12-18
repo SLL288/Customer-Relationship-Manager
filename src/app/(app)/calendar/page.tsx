@@ -112,7 +112,7 @@ export default function CalendarPage() {
 
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const evt = clickInfo.event.extendedProps as EventWithProject;
-    setForm(evt);
+    setForm({ ...evt, team_id: evt.team_id || currentTeamId });
     try {
       const assignments = await fetchAssignmentsForEvent(evt.id);
       setSelectedAssignmentIds(assignments.map((a) => a.user_id));
@@ -146,7 +146,8 @@ export default function CalendarPage() {
   };
 
   const handleSave = async () => {
-    if (!form.project_id || !form.start_time || !form.end_time || !form.team_id) {
+    const resolvedTeamId = form.team_id || currentTeamId || null;
+    if (!form.project_id || !form.start_time || !form.end_time || !resolvedTeamId) {
       toast.error("Team, project, start, and end are required");
       return;
     }
@@ -158,14 +159,14 @@ export default function CalendarPage() {
       if (form.id) {
         saved = await updateEvent(form.id, {
           ...form,
-          team_id: form.team_id,
+          team_id: resolvedTeamId,
           start_time: startIso,
           end_time: endIso,
         });
       } else {
         saved = await insertEvent({
           ...form,
-          team_id: form.team_id,
+          team_id: resolvedTeamId,
           start_time: startIso,
           end_time: endIso,
         });
@@ -458,9 +459,3 @@ export default function CalendarPage() {
     </div>
   );
 }
-              const val = e.target.value || null;
-              setCurrentTeamId(val);
-              if (rangeStart && rangeEnd) {
-                loadEvents(rangeStart, rangeEnd, val);
-              }
-            }}
