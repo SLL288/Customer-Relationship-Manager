@@ -16,10 +16,10 @@ import {
   updateEvent,
 } from "../../../lib/data/events";
 import { fetchProjects } from "../../../lib/data/projects";
-import { fetchCrewMembers } from "../../../lib/data/members";
+import { fetchMembers } from "../../../lib/data/members";
 import { fetchAssignmentsForEvent, replaceAssignments } from "../../../lib/data/assignments";
-import { fetchTeams } from "../../../lib/data/teams";
-import { Event as DbEvent, EventWithProject, OrgMember, Project, Team } from "../../../lib/types";
+import { fetchTeams, fetchTeamMembers } from "../../../lib/data/teams";
+import { Event as DbEvent, EventWithProject, OrgMember, Project, Team, TeamMember } from "../../../lib/types";
 import { Trash2, CheckCircle2 } from "lucide-react";
 
 type EventForm = Partial<DbEvent> & { id?: string };
@@ -27,7 +27,8 @@ type EventForm = Partial<DbEvent> & { id?: string };
 export default function CalendarPage() {
   const [events, setEvents] = useState<EventWithProject[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [crew, setCrew] = useState<OrgMember[]>([]);
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,40 +41,74 @@ export default function CalendarPage() {
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [rangeEnd, setRangeEnd] = useState<string | null>(null);
 
+  const teamById = useMemo(() => {
+    const map = new Map<string, Team>();
+    teams.forEach((team) => map.set(team.id, team));
+    return map;
+  }, [teams]);
+
   const calendarEvents = useMemo(
     () =>
-      events.map((evt) => ({
-        id: evt.id,
-        title: evt.project?.title || "Untitled",
-        start: evt.start_time,
-        end: evt.end_time,
-        backgroundColor: evt.status === "confirmed" ? "#22c55e" : undefined,
-        borderColor: evt.status === "confirmed" ? "#16a34a" : undefined,
-        extendedProps: evt,
-      })),
-    [events],
+      events.map((evt) => {
+        const teamColor = evt.team_id ? teamById.get(evt.team_id)?.color : null;
+        const confirmed = evt.status === "confirmed";
+        return {
+          id: evt.id,
+          title: evt.project?.title || "Untitled",
+          start: evt.start_time,
+          end: evt.end_time,
+          backgroundColor: teamColor || (confirmed ? "#22c55e" : undefined),
+          borderColor: teamColor || (confirmed ? "#16a34a" : undefined),
+          extendedProps: evt,
+        };
+      }),
+    [events, teamById],
   );
 
   useEffect(() => {
     const loadLookups = async () => {
       try {
-        const [projectData, crewData, teamData] = await Promise.all([
+        const [projectData, memberData, teamData] = await Promise.all([
           fetchProjects("all"),
-          fetchCrewMembers(),
+          fetchMembers(),
           fetchTeams(),
         ]);
         setProjects(projectData);
-        setCrew(crewData);
+        setOrgMembers(memberData);
         setTeams(teamData);
-        if (teamData.length && !currentTeamId) {
-          setCurrentTeamId(teamData[0].id);
-        }
       } catch (err: any) {
         toast.error(err.message || "Failed to load reference data");
       }
     };
     loadLookups();
-  }, [currentTeamId]);
+  }, []);
+
+  useEffect(() => {
+    const loadTeamMembers = async () => {
+      const teamId = form.team_id || currentTeamId;
+      if (!teamId) {
+        setTeamMembers([]);
+        return;
+      }
+      try {
+        const members = await fetchTeamMembers(teamId);
+        setTeamMembers(members);
+        setSelectedAssignmentIds((prev) =>
+          prev.filter((id) => members.some((m) => m.user_id === id)),
+        );
+      } catch (err: any) {
+        toast.error(err.message || "Failed to load team members");
+      }
+    };
+    loadTeamMembers();
+  }, [form.team_id, currentTeamId]);
+
+  const crewOptions = useMemo(() => {
+    if (teamMembers.length === 0) return [];
+    return teamMembers
+      .map((tm) => orgMembers.find((m) => m.user_id === tm.user_id))
+      .filter((m): m is OrgMember => Boolean(m));
+  }, [teamMembers, orgMembers]);
 
   const loadEvents = async (
     startIso: string,
@@ -230,16 +265,17 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2 text-sm text-slate-700">
           <span className="font-semibold">Team</span>
           <select
-            value={currentTeamId || ""}
+            value={currentTeamId || "all"}
             onChange={(e) => {
-              const val = e.target.value || null;
+              const val = e.target.value === "all" ? null : e.target.value;
               setCurrentTeamId(val);
               if (rangeStart && rangeEnd) {
-                loadEvents(rangeStart, rangeEnd);
+                loadEvents(rangeStart, rangeEnd, val);
               }
             }}
             className="rounded-md border border-slate-200 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none"
           >
+            <option value="all">All teams</option>
             {teams.length === 0 && <option value="">No teams</option>}
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
@@ -380,7 +416,7 @@ export default function CalendarPage() {
               Assign crew
             </label>
             <div className="flex flex-wrap gap-2">
-              {crew.map((member) => {
+              {crewOptions.map((member) => {
                 const checked = selectedAssignmentIds.includes(member.user_id);
                 return (
                   <label
@@ -411,8 +447,12 @@ export default function CalendarPage() {
                   </label>
                 );
               })}
-              {crew.length === 0 && (
-                <p className="text-sm text-slate-500">No crew members yet.</p>
+              {crewOptions.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  {form.team_id || currentTeamId
+                    ? "No team members assigned."
+                    : "Select a team to assign crew."}
+                </p>
               )}
             </div>
           </div>

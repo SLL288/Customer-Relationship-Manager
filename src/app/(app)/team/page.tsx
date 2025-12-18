@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
-import { fetchMembers } from "../../../lib/data/members";
+import {
+  fetchMembers,
+  insertMember,
+  updateMember,
+} from "../../../lib/data/members";
 import {
   fetchTeams,
   insertTeam,
@@ -28,21 +32,29 @@ export default function TeamPage() {
   const [form, setForm] = useState<TeamForm>({});
   const [saving, setSaving] = useState(false);
   const [memberSelection, setMemberSelection] = useState<string[]>([]);
+  const [crewModalOpen, setCrewModalOpen] = useState(false);
+  const [crewForm, setCrewForm] = useState<Partial<OrgMember>>({});
+  const [crewSaving, setCrewSaving] = useState(false);
 
   const selectedTeamMembers = useMemo(() => {
     if (!form.id) return [];
     return teamMembers[form.id] || [];
   }, [form.id, teamMembers]);
 
+  const refreshMembers = async () => {
+    const membersData = await fetchMembers();
+    setOrgMembers(membersData);
+    return membersData;
+  };
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
         const [membersData, teamsData] = await Promise.all([
-          fetchMembers(),
+          refreshMembers(),
           fetchTeams(),
         ]);
-        setOrgMembers(membersData);
         setTeams(teamsData);
         // Preload members for existing teams
         const memberMap: Record<string, TeamMember[]> = {};
@@ -78,6 +90,50 @@ export default function TeamPage() {
     setTeamMembers((prev) => ({ ...prev, [team.id]: currentMembers }));
     setMemberSelection(currentMembers.map((m) => m.user_id));
     setModalOpen(true);
+  };
+
+  const resetCrewModal = () => {
+    setCrewForm({});
+    setCrewModalOpen(false);
+  };
+
+  const openNewCrew = () => {
+    setCrewForm({ role: "crew_member" });
+    setCrewModalOpen(true);
+  };
+
+  const openEditCrew = (member: OrgMember) => {
+    setCrewForm(member);
+    setCrewModalOpen(true);
+  };
+
+  const handleCrewSave = async () => {
+    if (!crewForm.user_id && !crewForm.id) {
+      toast.error("User ID is required for new crew members");
+      return;
+    }
+    setCrewSaving(true);
+    try {
+      if (crewForm.id) {
+        await updateMember(crewForm.id, {
+          display_name: crewForm.display_name ?? null,
+          role: crewForm.role ?? null,
+        });
+      } else {
+        await insertMember({
+          user_id: crewForm.user_id!,
+          display_name: crewForm.display_name ?? null,
+          role: crewForm.role ?? "crew_member",
+        });
+      }
+      await refreshMembers();
+      toast.success("Crew member saved");
+      resetCrewModal();
+    } catch (err: any) {
+      toast.error(err.message || "Crew save failed");
+    } finally {
+      setCrewSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -124,99 +180,167 @@ export default function TeamPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Teams</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Teams & Crew</h1>
           <p className="text-sm text-slate-600">
-            Create teams, assign members, and use them to filter schedules.
+            Manage crew profiles, group them into teams, and plan schedules.
           </p>
         </div>
-        <button
-          onClick={openNewTeam}
-          className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700"
-        >
-          <Plus className="h-4 w-4" />
-          New Team
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openNewCrew}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            <Users className="h-4 w-4" />
+            Add Crew
+          </button>
+          <button
+            onClick={openNewTeam}
+            className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700"
+          >
+            <Plus className="h-4 w-4" />
+            New Team
+          </button>
+        </div>
       </div>
 
-      {loading && (
-        <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-600">
-          Loading teams...
-        </div>
-      )}
+      <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
+        <section className="space-y-4">
+          {loading && (
+            <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-600">
+              Loading teams...
+            </div>
+          )}
 
-      {!loading && teams.length === 0 && (
-        <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-600">
-          No teams yet. Create one to start assigning schedules.
-        </div>
-      )}
+          {!loading && teams.length === 0 && (
+            <div className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-600">
+              No teams yet. Create one to start assigning schedules.
+            </div>
+          )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {teams.map((team) => (
-          <div
-            key={team.id}
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-semibold text-slate-900">
-                    {team.name}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {teams.map((team) => (
+              <div
+                key={team.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-semibold text-slate-900">
+                        {team.name}
+                      </span>
+                      {team.color && (
+                        <span
+                          className="h-3 w-3 rounded-full border border-slate-200"
+                          style={{ backgroundColor: team.color }}
+                        />
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      {team.description || "No description"}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => openEditTeam(team)}
+                      className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                      aria-label="Edit team"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(team)}
+                      className="rounded-md border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                      aria-label="Delete team"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                  <Users className="h-4 w-4" />
+                  <span>
+                    {teamMembers[team.id]?.length || 0} member
+                    {(teamMembers[team.id]?.length || 0) === 1 ? "" : "s"}
                   </span>
-                  {team.color && (
-                    <span
-                      className="h-3 w-3 rounded-full border border-slate-200"
-                      style={{ backgroundColor: team.color }}
-                    />
+                </div>
+                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                  {(teamMembers[team.id] || []).map((tm) => {
+                    const user = orgMembers.find((m) => m.user_id === tm.user_id);
+                    return (
+                      <div
+                        key={tm.id}
+                        className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1"
+                      >
+                        {user?.display_name || user?.user_id || tm.user_id}
+                      </div>
+                    );
+                  })}
+                  {teamMembers[team.id]?.length === 0 && (
+                    <p className="text-slate-500">No members yet.</p>
                   )}
                 </div>
-                <p className="text-xs text-slate-600">
-                  {team.description || "No description"}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Crew Directory
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Update display names and roles for each crew member.
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => openEditTeam(team)}
-                  className="rounded-md border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                  aria-label="Edit team"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(team)}
-                  className="rounded-md border border-red-200 p-2 text-red-600 hover:bg-red-50"
-                  aria-label="Delete team"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
+              <button
+                onClick={openNewCrew}
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Add
+              </button>
             </div>
-            <div className="mt-3 flex items-center gap-2 text-sm text-slate-700">
-              <Users className="h-4 w-4" />
-              <span>
-                {teamMembers[team.id]?.length || 0} member
-                {(teamMembers[team.id]?.length || 0) === 1 ? "" : "s"}
-              </span>
-            </div>
-            <div className="mt-2 space-y-1 text-xs text-slate-600">
-              {(teamMembers[team.id] || []).map((tm) => {
-                const user = orgMembers.find((m) => m.user_id === tm.user_id);
-                return (
-                  <div
-                    key={tm.id}
-                    className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1"
-                  >
-                    {user?.display_name || user?.user_id || tm.user_id}
+            <div className="mt-3 space-y-2">
+              {orgMembers.map((member) => (
+                <div
+                  key={member.id}
+                  className="rounded-lg border border-slate-100 bg-slate-50 p-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        {member.display_name || member.user_id}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {member.role || "crew_member"}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {member.user_id}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => openEditCrew(member)}
+                      className="rounded-md border border-slate-200 p-1 text-slate-500 hover:bg-white"
+                      aria-label="Edit crew"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
                   </div>
-                );
-              })}
-              {teamMembers[team.id]?.length === 0 && (
-                <p className="text-slate-500">No members yet.</p>
+                </div>
+              ))}
+              {orgMembers.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  No crew members yet. Add one to start assigning teams.
+                </p>
               )}
             </div>
           </div>
-        ))}
+        </section>
       </div>
 
       <Modal
@@ -306,6 +430,66 @@ export default function TeamPage() {
               className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-70"
             >
               {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={crewModalOpen}
+        title={crewForm.id ? "Edit Crew Member" : "Add Crew Member"}
+        onClose={resetCrewModal}
+      >
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">User ID</label>
+            <input
+              value={crewForm.user_id || ""}
+              onChange={(e) =>
+                setCrewForm({ ...crewForm, user_id: e.target.value })
+              }
+              disabled={Boolean(crewForm.id)}
+              placeholder="Auth user UUID"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-100"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">
+              Display name
+            </label>
+            <input
+              value={crewForm.display_name || ""}
+              onChange={(e) =>
+                setCrewForm({ ...crewForm, display_name: e.target.value })
+              }
+              placeholder="Crew member name"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Role</label>
+            <input
+              value={crewForm.role || ""}
+              onChange={(e) =>
+                setCrewForm({ ...crewForm, role: e.target.value })
+              }
+              placeholder="crew_member"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={resetCrewModal}
+              className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCrewSave}
+              disabled={crewSaving}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700 disabled:opacity-70"
+            >
+              {crewSaving ? "Saving..." : "Save"}
             </button>
           </div>
         </div>
