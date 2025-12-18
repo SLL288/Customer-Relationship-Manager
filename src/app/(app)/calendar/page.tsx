@@ -190,21 +190,21 @@ export default function CalendarPage() {
     const endIso = new Date(form.end_time).toISOString();
     setSaving(true);
     try {
+      const payload = {
+        project_id: form.project_id,
+        team_id: resolvedTeamId,
+        status: form.status ?? "scheduled",
+        notes: form.notes ?? "",
+        start_time: startIso,
+        end_time: endIso,
+        timezone:
+          form.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
       let saved: DbEvent;
       if (form.id) {
-        saved = await updateEvent(form.id, {
-          ...form,
-          team_id: resolvedTeamId,
-          start_time: startIso,
-          end_time: endIso,
-        });
+        saved = await updateEvent(form.id, payload);
       } else {
-        saved = await insertEvent({
-          ...form,
-          team_id: resolvedTeamId,
-          start_time: startIso,
-          end_time: endIso,
-        });
+        saved = await insertEvent(payload);
       }
       await replaceAssignments(saved.id, selectedAssignmentIds);
       toast.success("Event saved");
